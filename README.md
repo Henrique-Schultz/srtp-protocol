@@ -76,9 +76,3 @@ Os hashes devem ser identicos.
 - Timeout fixo de 100 ms para retransmissao.
 - Encerramento com `FIN` e `FIN+ACK`.
 
-## Limitacoes conhecidas
-
-- Apenas o modo Stop-and-Wait (`saw`) esta implementado.
-- Go-Back-N e Selective Repeat ficaram apenas previstos pela organizacao em camadas.
-- O protocolo e half-duplex: em uma sessao, somente o sender envia dados de aplicacao.
-- Pacotes com CRC invalido sao descartados silenciosamente, sem NACK.
