@@ -17,42 +17,34 @@ dotnet build
 
 ## Como executar
 
-### Receiver
+Execute:
 
 ```bash
-dotnet run -- --listen --port 5000 --out recebido.bin --window 1 --mode saw
+dotnet run
 ```
 
-### Sender
-
-```bash
-dotnet run -- --host 127.0.0.1 --port 5000 --file entrada.bin --window 1 --mode saw
-```
-
-Se `--listen` estiver presente, o programa roda como receiver. Caso contrario, roda como sender.
+O programa perguntara no terminal se deve rodar como receiver ou sender.
 
 ## Argumentos
 
-- `--listen`: ativa o modo receiver.
-- `--host IP-ou-hostname`: endereco do receiver, usado no modo sender.
-- `--port P`: porta base do protocolo. O receiver escuta em `P`; o sender usa localmente `P+1`.
-- `--file caminho`: arquivo de entrada enviado pelo sender.
-- `--out caminho`: arquivo de saida gravado pelo receiver.
-- `--window N`: janela proposta no handshake, de 1 a 255. Nesta parte, o comportamento efetivo e Stop-and-Wait com janela 1.
-- `--mode saw`: modo Stop-and-Wait. E o unico modo implementado nesta parte.
+- Modo: receiver ou sender.
+- Porta base: porta `P` do receiver. O sender usa localmente `P+1`.
+- Arquivo de entrada: arquivo enviado pelo sender.
+- Arquivo de saida: arquivo gravado pelo receiver.
+- Janela proposta: valor de 1 a 255. Nesta parte, o comportamento efetivo e Stop-and-Wait com janela 1.
 
 ## Teste local
 
 Em um terminal:
 
 ```bash
-dotnet run -- --listen --port 5000 --out recebido.bin --mode saw
+dotnet run
 ```
 
 Em outro terminal:
 
 ```bash
-dotnet run -- --host 127.0.0.1 --port 5000 --file entrada.bin --mode saw
+dotnet run
 ```
 
 Para gerar um arquivo de teste com mais de 50 pacotes:

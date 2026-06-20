@@ -1,9 +1,15 @@
-using Srtp.Cli;
 using Srtp.Modes;
+using Srtp.Terminal;
 
 try
 {
-    var options = CliOptions.Parse(args);
+    if (args.Length > 0)
+    {
+        Console.WriteLine("Esta versao usa entrada interativa. Execute apenas: dotnet run");
+        return;
+    }
+
+    var options = TerminalOptions.Read();
 
     using var cts = new CancellationTokenSource();
     Console.CancelKeyPress += (_, eventArgs) =>
@@ -31,7 +37,5 @@ catch (OperationCanceledException)
 catch (Exception ex)
 {
     Console.Error.WriteLine($"Erro: {ex.Message}");
-    Console.Error.WriteLine();
-    CliOptions.PrintUsage();
     Environment.ExitCode = 1;
 }
