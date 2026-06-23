@@ -32,6 +32,23 @@ public sealed class TerminalOptions
             throw new ArgumentException("Modo invalido. Use 1 para receiver ou 2 para sender.");
         }
 
+        Console.WriteLine("Protocolo:");
+        Console.WriteLine("1 - Stop-and-Wait");
+        Console.WriteLine("2 - Go-Back-N");
+        Console.Write("Escolha o protocolo [1/2]: ");
+        string? protocolChoice = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(protocolChoice))
+        {
+            protocolChoice = "1";
+        }
+
+        protocolChoice = protocolChoice.Trim();
+        string protocolMode = protocolChoice == "2" ? "gbn" : "saw";
+        if (protocolChoice != "1" && protocolChoice != "2")
+        {
+            throw new ArgumentException("Protocolo invalido. Use 1 para Stop-and-Wait ou 2 para Go-Back-N.");
+        }
+
         Console.Write("Porta base [5000]: ");
         string? portText = Console.ReadLine();
         int port = string.IsNullOrWhiteSpace(portText)
@@ -67,7 +84,8 @@ public sealed class TerminalOptions
                 Listen = true,
                 Port = port,
                 OutputPath = outputPath,
-                Window = (byte)window
+                Window = (byte)window,
+                Mode = protocolMode
             };
         }
 
@@ -94,7 +112,8 @@ public sealed class TerminalOptions
             Host = host,
             Port = port,
             FilePath = filePath,
-            Window = (byte)window
+            Window = (byte)window,
+            Mode = protocolMode
         };
     }
 

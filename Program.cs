@@ -5,11 +5,27 @@ TerminalOptions options = TerminalOptions.Read();
 
 if (options.Listen)
 {
-    StopAndWaitReceiver receiver = new StopAndWaitReceiver();
-    await receiver.ReceiveFileAsync(options.Port, options.OutputPath!, options.Window);
+    if (options.Mode == "gbn")
+    {
+        GoBackNReceiver receiver = new GoBackNReceiver();
+        await receiver.ReceiveFileAsync(options.Port, options.OutputPath!, options.Window);
+    }
+    else
+    {
+        StopAndWaitReceiver receiver = new StopAndWaitReceiver();
+        await receiver.ReceiveFileAsync(options.Port, options.OutputPath!, options.Window);
+    }
 }
 else
 {
-    StopAndWaitSender sender = new StopAndWaitSender();
-    await sender.SendFileAsync(options.Host!, options.Port, options.FilePath!, options.Window);
+    if (options.Mode == "gbn")
+    {
+        GoBackNSender sender = new GoBackNSender();
+        await sender.SendFileAsync(options.Host!, options.Port, options.FilePath!, options.Window);
+    }
+    else
+    {
+        StopAndWaitSender sender = new StopAndWaitSender();
+        await sender.SendFileAsync(options.Host!, options.Port, options.FilePath!, options.Window);
+    }
 }

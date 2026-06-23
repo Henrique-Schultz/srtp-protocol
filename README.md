@@ -1,6 +1,6 @@
 # SRTP - Simple Reliable Transport Protocol
 
-Implementacao da Parte 1 do trabalho de Laboratorio de Redes: um protocolo de transporte confiavel simples sobre UDP, usando Stop-and-Wait.
+Implementacao do trabalho de Laboratorio de Redes: um protocolo de transporte confiavel simples sobre UDP, usando Stop-and-Wait e Go-Back-N.
 
 ## Requisitos
 
@@ -23,15 +23,16 @@ Execute:
 dotnet run
 ```
 
-O programa perguntara no terminal se deve rodar como receiver ou sender.
+O programa perguntara no terminal se deve rodar como receiver ou sender e qual protocolo deve usar.
 
 ## Argumentos
 
 - Modo: receiver ou sender.
+- Protocolo: Stop-and-Wait ou Go-Back-N.
 - Porta base: porta `P` do receiver. O sender usa localmente `P+1`.
 - Arquivo de entrada: arquivo enviado pelo sender.
 - Arquivo de saida: arquivo gravado pelo receiver.
-- Janela proposta: valor de 1 a 255. Nesta parte, o comportamento efetivo e Stop-and-Wait com janela 1.
+- Janela proposta: valor de 1 a 255. No Stop-and-Wait, a janela efetiva e 1. No Go-Back-N, a janela controla quantos pacotes podem ficar em voo.
 
 ## Teste local
 
@@ -72,7 +73,7 @@ Os hashes devem ser identicos.
 - Payload maximo de 255 bytes.
 - CRC32 IEEE calculado sobre cabecalho com CRC zerado mais payload.
 - Three-way handshake: `SYN`, `SYN+ACK`, `ACK`.
-- Transferencia confiavel por Stop-and-Wait.
+- Transferencia confiavel por Stop-and-Wait ou Go-Back-N.
 - Timeout fixo de 100 ms para retransmissao.
 - Encerramento com `FIN` e `FIN+ACK`.
 
