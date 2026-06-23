@@ -15,9 +15,9 @@ public sealed class SenderStats
 
     public void Print(string filePath)
     {
-        var elapsedMs = Math.Max(1, _stopwatch.ElapsedMilliseconds);
-        var bytesPerSecond = ApplicationBytes * 1000.0 / elapsedMs;
-        var kbps = bytesPerSecond * 8.0 / 1000.0;
+        long elapsedMs = Math.Max(1, _stopwatch.ElapsedMilliseconds);
+        double bytesPerSecond = ApplicationBytes * 1000.0 / elapsedMs;
+        double kbps = bytesPerSecond * 8.0 / 1000.0;
 
         Console.WriteLine($"Arquivo enviado: {filePath}");
         Console.WriteLine($"Bytes enviados de aplicacao: {ApplicationBytes}");
@@ -44,7 +44,7 @@ public sealed class ReceiverStats
 
     public void Print(string outputPath)
     {
-        var elapsedMs = Math.Max(1, _stopwatch.ElapsedMilliseconds);
+        long elapsedMs = Math.Max(1, _stopwatch.ElapsedMilliseconds);
 
         Console.WriteLine($"Arquivo recebido: {outputPath}");
         Console.WriteLine($"Bytes recebidos de aplicacao: {ApplicationBytes}");

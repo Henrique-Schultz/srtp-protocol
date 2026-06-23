@@ -17,25 +17,38 @@ public sealed class TerminalOptions
         Console.WriteLine("1 - Receiver");
         Console.WriteLine("2 - Sender");
 
-        var modeChoice = ReadRequired("Escolha o modo [1/2]: ");
-        var listen = modeChoice == "1" ||
-            modeChoice.Equals("receiver", StringComparison.OrdinalIgnoreCase) ||
-            modeChoice.Equals("r", StringComparison.OrdinalIgnoreCase);
+        Console.Write("Escolha o modo [1/2]: ");
+        string? modeChoice = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(modeChoice))
+        {
+            throw new ArgumentException("Valor obrigatorio nao informado.");
+        }
 
-        if (!listen && modeChoice != "2" &&
-            !modeChoice.Equals("sender", StringComparison.OrdinalIgnoreCase) &&
-            !modeChoice.Equals("s", StringComparison.OrdinalIgnoreCase))
+        modeChoice = modeChoice.Trim();
+        bool listen = modeChoice == "1";
+
+        if (!listen && modeChoice != "2")
         {
             throw new ArgumentException("Modo invalido. Use 1 para receiver ou 2 para sender.");
         }
 
-        var port = ReadInt("Porta base [5000]: ", defaultValue: 5000);
+        Console.Write("Porta base [5000]: ");
+        string? portText = Console.ReadLine();
+        int port = string.IsNullOrWhiteSpace(portText)
+            ? 5000
+            : int.Parse(portText.Trim());
+
         if (port is < 1 or > 65534)
         {
             throw new ArgumentException("A porta deve estar entre 1 e 65534.");
         }
 
-        var window = ReadInt("Janela proposta [1]: ", defaultValue: 1);
+        Console.Write("Janela proposta [1]: ");
+        string? windowText = Console.ReadLine();
+        int window = string.IsNullOrWhiteSpace(windowText)
+            ? 1
+            : int.Parse(windowText.Trim());
+
         if (window is < 1 or > 255)
         {
             throw new ArgumentException("A janela deve estar entre 1 e 255.");
@@ -43,7 +56,12 @@ public sealed class TerminalOptions
 
         if (listen)
         {
-            var outputPath = ReadRequired("Arquivo de saida [recebido.bin]: ", "recebido.bin");
+            Console.Write("Arquivo de saida [recebido.bin]: ");
+            string? outputPath = Console.ReadLine();
+            outputPath = string.IsNullOrWhiteSpace(outputPath)
+                ? "recebido.bin"
+                : outputPath.Trim();
+
             return new TerminalOptions
             {
                 Listen = true,
@@ -53,8 +71,18 @@ public sealed class TerminalOptions
             };
         }
 
-        var host = ReadRequired("Host do receiver [127.0.0.1]: ", "127.0.0.1");
-        var filePath = ReadRequired("Arquivo de entrada [entrada.bin]: ", "entrada.bin");
+        Console.Write("Host do receiver [127.0.0.1]: ");
+        string? host = Console.ReadLine();
+        host = string.IsNullOrWhiteSpace(host)
+            ? "127.0.0.1"
+            : host.Trim();
+
+        Console.Write("Arquivo de entrada [entrada.bin]: ");
+        string? filePath = Console.ReadLine();
+        filePath = string.IsNullOrWhiteSpace(filePath)
+            ? "entrada.bin"
+            : filePath.Trim();
+
         if (!File.Exists(filePath))
         {
             throw new FileNotFoundException("Arquivo de entrada nao encontrado.", filePath);
@@ -70,34 +98,4 @@ public sealed class TerminalOptions
         };
     }
 
-    private static string ReadRequired(string prompt, string? defaultValue = null)
-    {
-        Console.Write(prompt);
-        var value = Console.ReadLine();
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            if (!string.IsNullOrWhiteSpace(defaultValue))
-            {
-                return defaultValue;
-            }
-
-            throw new ArgumentException("Valor obrigatorio nao informado.");
-        }
-
-        return value.Trim();
-    }
-
-    private static int ReadInt(string prompt, int defaultValue)
-    {
-        Console.Write(prompt);
-        var value = Console.ReadLine();
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return defaultValue;
-        }
-
-        return int.TryParse(value.Trim(), out var parsed)
-            ? parsed
-            : throw new ArgumentException($"Numero invalido: {value}");
-    }
 }

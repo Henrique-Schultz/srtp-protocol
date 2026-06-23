@@ -7,11 +7,11 @@ public static class Crc32
 
     public static uint Compute(ReadOnlySpan<byte> data)
     {
-        var crc = 0xFFFFFFFFu;
+        uint crc = 0xFFFFFFFFu;
 
-        foreach (var b in data)
+        foreach (byte b in data)
         {
-            var index = (crc ^ b) & 0xFFu;
+            uint index = (crc ^ b) & 0xFFu;
             crc = (crc >> 8) ^ Table[index];
         }
 
@@ -20,11 +20,11 @@ public static class Crc32
 
     private static uint[] BuildTable()
     {
-        var table = new uint[256];
+        uint[] table = new uint[256];
         for (uint i = 0; i < table.Length; i++)
         {
-            var value = i;
-            for (var bit = 0; bit < 8; bit++)
+            uint value = i;
+            for (int bit = 0; bit < 8; bit++)
             {
                 value = (value & 1u) != 0 ? (value >> 1) ^ Polynomial : value >> 1;
             }

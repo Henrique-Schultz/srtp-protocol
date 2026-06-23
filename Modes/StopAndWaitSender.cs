@@ -11,127 +11,147 @@ public sealed class StopAndWaitSender : ITransferMode
 
     public string Name => "saw";
 
-    public async Task SendFileAsync(string host, int port, string filePath, byte proposedWindow, CancellationToken ct)
+    public async Task SendFileAsync(string host, int port, string filePath, byte proposedWindow)
     {
-        var receiverAddresses = await Dns.GetHostAddressesAsync(host, ct);
-        var receiverAddress = receiverAddresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork)
+        IPAddress[] receiverAddresses = await Dns.GetHostAddressesAsync(host);
+        IPAddress receiverAddress = receiverAddresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork)
             ?? receiverAddresses.FirstOrDefault()
             ?? throw new InvalidOperationException("Host do receiver nao foi resolvido.");
-        var receiver = new IPEndPoint(receiverAddress, port);
+        IPEndPoint receiver = new IPEndPoint(receiverAddress, port);
 
-        using var udp = new UdpClient(port + 1);
-        udp.Connect(receiver);
-
-        Console.WriteLine($"Sender ligado na porta local {port + 1}; destino {receiver}.");
-        await HandshakeAsync(udp, proposedWindow, ct);
-
-        var stats = new SenderStats();
-        stats.Start();
-
-        ushort seq = 0;
-        await using var stream = File.OpenRead(filePath);
-        var buffer = new byte[SrtpPacket.MaxPayloadLength];
-        var sentFinalZeroLength = false;
-
-        while (true)
+        UdpClient udp = new UdpClient(port + 1);
+        try
         {
-            var read = await stream.ReadAsync(buffer, ct);
-            var isEnd = read < SrtpPacket.MaxPayloadLength;
+            udp.Connect(receiver);
 
-            if (read == 0 && stream.Position == stream.Length && sentFinalZeroLength)
+            Console.WriteLine($"Sender ligado na porta local {port + 1}; destino {receiver}.");
+            await HandshakeAsync(udp, proposedWindow);
+
+            SenderStats stats = new SenderStats();
+            stats.Start();
+
+            ushort seq = 0;
+            FileStream stream = File.OpenRead(filePath);
+            try
             {
-                break;
-            }
+                byte[] buffer = new byte[SrtpPacket.MaxPayloadLength];
+                bool sentFinalZeroLength = false;
 
-            var payload = buffer.AsSpan(0, read).ToArray();
-            var packet = new SrtpPacket
-            {
-                Seq = seq,
-                Length = (byte)read,
-                Payload = payload
-            };
-
-            stats.ApplicationBytes += read;
-            stats.OriginalDataPackets++;
-            await SendWithAckAsync(udp, packet, stats, ct);
-            seq = SequenceNumber.NextSeq(seq);
-
-            if (isEnd)
-            {
-                break;
-            }
-
-            if (stream.Position == stream.Length)
-            {
-                sentFinalZeroLength = true;
-                var finalPacket = new SrtpPacket
+                while (true)
                 {
-                    Seq = seq,
-                    Length = 0,
-                    Payload = Array.Empty<byte>()
-                };
+                    int read = await stream.ReadAsync(buffer);
+                    bool isEnd = read < SrtpPacket.MaxPayloadLength;
 
-                stats.OriginalDataPackets++;
-                await SendWithAckAsync(udp, finalPacket, stats, ct);
-                break;
+                    if (read == 0 && stream.Position == stream.Length && sentFinalZeroLength)
+                    {
+                        break;
+                    }
+
+                    byte[] payload = buffer.AsSpan(0, read).ToArray();
+                    SrtpPacket packet = new SrtpPacket
+                    {
+                        Seq = seq,
+                        Length = (byte)read,
+                        Payload = payload
+                    };
+
+                    stats.ApplicationBytes += read;
+                    stats.OriginalDataPackets++;
+                    await SendWithAckAsync(udp, packet, stats);
+                    seq = SequenceNumber.NextSeq(seq);
+
+                    if (isEnd)
+                    {
+                        break;
+                    }
+
+                    if (stream.Position == stream.Length)
+                    {
+                        sentFinalZeroLength = true;
+                        SrtpPacket finalPacket = new SrtpPacket
+                        {
+                            Seq = seq,
+                            Length = 0,
+                            Payload = Array.Empty<byte>()
+                        };
+
+                        stats.OriginalDataPackets++;
+                        await SendWithAckAsync(udp, finalPacket, stats);
+                        break;
+                    }
+                }
             }
-        }
+            finally
+            {
+                stream.Dispose();
+            }
 
-        await CloseAsync(udp, stats, ct);
-        stats.Stop();
-        stats.Print(filePath);
+            await CloseAsync(udp, stats);
+            stats.Stop();
+            stats.Print(filePath);
+        }
+        finally
+        {
+            udp.Dispose();
+        }
     }
 
-    private static async Task HandshakeAsync(UdpClient udp, byte proposedWindow, CancellationToken ct)
+    private static async Task HandshakeAsync(UdpClient udp, byte proposedWindow)
     {
-        var syn = PacketFactory.CreateSyn(proposedWindow).ToBytes();
+        byte[] syn = PacketFactory.CreateSyn(proposedWindow).ToBytes();
 
         while (true)
         {
-            await udp.SendAsync(syn, ct);
-            var result = await ReceivePacketOrTimeoutAsync(udp, ct);
-            if (result is not { } receive)
+            await udp.SendAsync(syn);
+            UdpReceiveResult? result = await ReceivePacketOrTimeoutAsync(udp);
+            if (!result.HasValue)
             {
                 continue;
             }
 
-            if (!SrtpPacket.TryParse(receive.Buffer, out var packet) || packet is null || !packet.IsValidChecksum())
+            UdpReceiveResult receive = result.Value;
+
+            SrtpPacket? packet = SrtpPacket.Parse(receive.Buffer);
+            if (packet == null || !packet.IsValidChecksum())
             {
                 continue;
             }
 
             if (packet.Syn && packet.AckFlag && !packet.Nack && packet.Seq == 0 && packet.Ack == 0)
             {
-                var effectiveWindow = Math.Min(proposedWindow, packet.Length);
+                int effectiveWindow = Math.Min(proposedWindow, packet.Length);
                 Console.WriteLine($"Handshake concluido. Janela efetiva negociada: {effectiveWindow}; Stop-and-Wait usa 1.");
-                var ack = PacketFactory.CreateAck(0).ToBytes();
-                await udp.SendAsync(ack, ct);
+                byte[] ack = PacketFactory.CreateAck(0).ToBytes();
+                await udp.SendAsync(ack);
                 return;
             }
         }
     }
 
-    private static async Task SendWithAckAsync(UdpClient udp, SrtpPacket packet, SenderStats stats, CancellationToken ct)
+    private static async Task SendWithAckAsync(UdpClient udp, SrtpPacket packet, SenderStats stats)
     {
-        var bytes = packet.ToBytes();
-        var retransmitting = false;
+        byte[] bytes = packet.ToBytes();
+        bool retransmitting = false;
 
         while (true)
         {
-            await udp.SendAsync(bytes, ct);
+            await udp.SendAsync(bytes);
             if (retransmitting)
             {
                 stats.Retransmissions++;
             }
 
-            var result = await ReceivePacketOrTimeoutAsync(udp, ct);
-            if (result is not { } receive)
+            UdpReceiveResult? result = await ReceivePacketOrTimeoutAsync(udp);
+            if (!result.HasValue)
             {
                 retransmitting = true;
                 continue;
             }
 
-            if (!SrtpPacket.TryParse(receive.Buffer, out var ack) || ack is null || !ack.IsValidChecksum())
+            UdpReceiveResult receive = result.Value;
+
+            SrtpPacket? ack = SrtpPacket.Parse(receive.Buffer);
+            if (ack == null || !ack.IsValidChecksum())
             {
                 continue;
             }
@@ -143,27 +163,30 @@ public sealed class StopAndWaitSender : ITransferMode
         }
     }
 
-    private static async Task CloseAsync(UdpClient udp, SenderStats stats, CancellationToken ct)
+    private static async Task CloseAsync(UdpClient udp, SenderStats stats)
     {
-        var fin = PacketFactory.CreateFin().ToBytes();
-        var retransmitting = false;
+        byte[] fin = PacketFactory.CreateFin().ToBytes();
+        bool retransmitting = false;
 
         while (true)
         {
-            await udp.SendAsync(fin, ct);
+            await udp.SendAsync(fin);
             if (retransmitting)
             {
                 stats.Retransmissions++;
             }
 
-            var result = await ReceivePacketOrTimeoutAsync(udp, ct);
-            if (result is not { } receive)
+            UdpReceiveResult? result = await ReceivePacketOrTimeoutAsync(udp);
+            if (!result.HasValue)
             {
                 retransmitting = true;
                 continue;
             }
 
-            if (!SrtpPacket.TryParse(receive.Buffer, out var packet) || packet is null || !packet.IsValidChecksum())
+            UdpReceiveResult receive = result.Value;
+
+            SrtpPacket? packet = SrtpPacket.Parse(receive.Buffer);
+            if (packet == null || !packet.IsValidChecksum())
             {
                 continue;
             }
@@ -175,18 +198,25 @@ public sealed class StopAndWaitSender : ITransferMode
         }
     }
 
-    private static async Task<UdpReceiveResult?> ReceivePacketOrTimeoutAsync(UdpClient udp, CancellationToken ct)
+    private static async Task<UdpReceiveResult?> ReceivePacketOrTimeoutAsync(UdpClient udp)
     {
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(Timeout);
-
+        CancellationTokenSource timeoutCts = new CancellationTokenSource();
         try
         {
-            return await udp.ReceiveAsync(timeoutCts.Token);
+            timeoutCts.CancelAfter(Timeout);
+
+            try
+            {
+                return await udp.ReceiveAsync(timeoutCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return null;
+            }
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        finally
         {
-            return null;
+            timeoutCts.Dispose();
         }
     }
 }
