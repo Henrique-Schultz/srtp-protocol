@@ -59,13 +59,13 @@ public static class PacketFactory
         };
     }
 
-    public static SrtpPacket CreateNack(ushort nackNumber)
+    public static SrtpPacket CreateNack(ushort ackNumber)
     {
         return new SrtpPacket
         {
             AckFlag = true,
             Nack = true,
-            Ack = nackNumber,
+            Ack = ackNumber,
             Length = 0,
             Payload = Array.Empty<byte>()
         };

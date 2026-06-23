@@ -35,7 +35,8 @@ public sealed class TerminalOptions
         Console.WriteLine("Protocolo:");
         Console.WriteLine("1 - Stop-and-Wait");
         Console.WriteLine("2 - Go-Back-N");
-        Console.Write("Escolha o protocolo [1/2]: ");
+        Console.WriteLine("3 - Selective Repeat");
+        Console.Write("Escolha o protocolo [1/2/3]: ");
         string? protocolChoice = Console.ReadLine();
         if (string.IsNullOrWhiteSpace(protocolChoice))
         {
@@ -43,10 +44,19 @@ public sealed class TerminalOptions
         }
 
         protocolChoice = protocolChoice.Trim();
-        string protocolMode = protocolChoice == "2" ? "gbn" : "saw";
-        if (protocolChoice != "1" && protocolChoice != "2")
+        string protocolMode = "saw";
+        if (protocolChoice == "2")
         {
-            throw new ArgumentException("Protocolo invalido. Use 1 para Stop-and-Wait ou 2 para Go-Back-N.");
+            protocolMode = "gbn";
+        }
+        else if (protocolChoice == "3")
+        {
+            protocolMode = "sr";
+        }
+
+        if (protocolChoice != "1" && protocolChoice != "2" && protocolChoice != "3")
+        {
+            throw new ArgumentException("Protocolo invalido. Use 1 para Stop-and-Wait, 2 para Go-Back-N ou 3 para Selective Repeat.");
         }
 
         Console.Write("Porta base [5000]: ");
