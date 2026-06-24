@@ -10,6 +10,83 @@ public sealed class TerminalOptions
     public byte Window { get; private init; } = 1;
     public string Mode { get; private init; } = "saw";
 
+    public static TerminalOptions Read(string[] args)
+    {
+        if (args == null || args.Length == 0)
+        {
+            return Read();
+        }
+
+        bool listen = false;
+        string? host = null;
+        int port = 5000;
+        string? filePath = null;
+        string? outputPath = null;
+        int window = 1;
+        string protocolMode = "saw";
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            string arg = args[i].ToLower().Trim();
+            if ((arg == "--mode" || arg == "-m") && i + 1 < args.Length)
+            {
+                string choice = args[++i].Trim().ToLower();
+                listen = choice == "1" || choice == "receiver";
+            }
+            else if ((arg == "--protocol" || arg == "-p") && i + 1 < args.Length)
+            {
+                string choice = args[++i].Trim().ToLower();
+                if (choice == "1" || choice == "saw" || choice == "stop-and-wait") protocolMode = "saw";
+                else if (choice == "2" || choice == "gbn" || choice == "go-back-n") protocolMode = "gbn";
+                else if (choice == "3" || choice == "sr" || choice == "selective-repeat") protocolMode = "sr";
+            }
+            else if ((arg == "--port" || arg == "-port") && i + 1 < args.Length)
+            {
+                port = int.Parse(args[++i].Trim());
+            }
+            else if ((arg == "--window" || arg == "-w") && i + 1 < args.Length)
+            {
+                window = int.Parse(args[++i].Trim());
+            }
+            else if ((arg == "--host" || arg == "-h") && i + 1 < args.Length)
+            {
+                host = args[++i].Trim();
+            }
+            else if ((arg == "--input" || arg == "-i") && i + 1 < args.Length)
+            {
+                filePath = args[++i].Trim();
+            }
+            else if ((arg == "--output" || arg == "-o") && i + 1 < args.Length)
+            {
+                outputPath = args[++i].Trim();
+            }
+        }
+
+        if (listen)
+        {
+            return new TerminalOptions
+            {
+                Listen = true,
+                Port = port,
+                OutputPath = outputPath ?? "recebido.bin",
+                Window = (byte)window,
+                Mode = protocolMode
+            };
+        }
+        else
+        {
+            return new TerminalOptions
+            {
+                Listen = false,
+                Host = host ?? "127.0.0.1",
+                Port = port,
+                FilePath = filePath ?? "entrada.bin",
+                Window = (byte)window,
+                Mode = protocolMode
+            };
+        }
+    }
+
     public static TerminalOptions Read()
     {
         Console.WriteLine("SRTP - Simple Reliable Transport Protocol");

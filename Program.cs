@@ -1,7 +1,7 @@
 using Srtp.Modes;
 using Srtp.Terminal;
 
-TerminalOptions options = TerminalOptions.Read();
+TerminalOptions options = TerminalOptions.Read(args);
 
 if (options.Listen)
 {
