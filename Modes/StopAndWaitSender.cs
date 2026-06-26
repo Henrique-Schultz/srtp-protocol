@@ -237,6 +237,12 @@ public sealed class StopAndWaitSender : ITransferMode
             {
                 return null;
             }
+            catch (SocketException)
+            {
+                // Ignora o erro de porta fechada/duplicada e trata como se fosse um timeout comum
+                // para que o fluxo do Stop-and-Wait continue sem travar o programa
+                return null;
+            }
         }
         finally
         {
