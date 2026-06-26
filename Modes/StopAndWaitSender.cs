@@ -103,7 +103,7 @@ public sealed class StopAndWaitSender : ITransferMode
         while (true)
         {
             await udp.SendAsync(syn);
-            UdpReceiveResult? result = await ReceivePacketOrTimeoutAsync(udp);
+            UdpReceiveResult? result = await ReceivePacketOrTimeoutAsync(udp, Timeout);
             if (!result.HasValue)
             {
                 continue;
@@ -131,60 +131,82 @@ public sealed class StopAndWaitSender : ITransferMode
     private static async Task SendWithAckAsync(UdpClient udp, SrtpPacket packet, SenderStats stats)
     {
         byte[] bytes = packet.ToBytes();
-        bool retransmitting = false;
 
         while (true)
         {
             await udp.SendAsync(bytes);
-            if (retransmitting)
-            {
-                stats.Retransmissions++;
-            }
 
-            UdpReceiveResult? result = await ReceivePacketOrTimeoutAsync(udp);
-            if (!result.HasValue)
-            {
-                retransmitting = true;
-                continue;
-            }
-
-            UdpReceiveResult receive = result.Value;
-
-            SrtpPacket? ack = SrtpPacket.Parse(receive.Buffer);
-            if (ack == null || !ack.IsValidChecksum())
-            {
-                continue;
-            }
-
-            if (ack.AckFlag && !ack.Nack && !ack.Syn && !ack.Fin && ack.Ack == packet.Seq)
+            bool ackReceived = await WaitForAckAsync(udp, packet.Seq, Timeout);
+            if (ackReceived)
             {
                 return;
             }
+
+            stats.Retransmissions++;
         }
     }
 
     private static async Task CloseAsync(UdpClient udp, SenderStats stats)
     {
         byte[] fin = PacketFactory.CreateFin().ToBytes();
-        bool retransmitting = false;
 
         while (true)
         {
             await udp.SendAsync(fin);
-            if (retransmitting)
+
+            bool finAckReceived = await WaitForFinAckAsync(udp, Timeout);
+            if (finAckReceived)
             {
-                stats.Retransmissions++;
+                return;
             }
 
-            UdpReceiveResult? result = await ReceivePacketOrTimeoutAsync(udp);
+            stats.Retransmissions++;
+        }
+    }
+
+    private static async Task<bool> WaitForAckAsync(UdpClient udp, ushort expectedSeq, TimeSpan timeout)
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            TimeSpan remaining = deadline - DateTime.UtcNow;
+            UdpReceiveResult? result = await ReceivePacketOrTimeoutAsync(udp, remaining);
             if (!result.HasValue)
             {
-                retransmitting = true;
-                continue;
+                return false;
             }
 
             UdpReceiveResult receive = result.Value;
+            SrtpPacket? ack = SrtpPacket.Parse(receive.Buffer);
+            if (ack == null || !ack.IsValidChecksum())
+            {
+                continue;
+            }
 
+            if (ack.AckFlag && !ack.Nack && !ack.Syn && !ack.Fin && ack.Ack == expectedSeq)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static async Task<bool> WaitForFinAckAsync(UdpClient udp, TimeSpan timeout)
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            TimeSpan remaining = deadline - DateTime.UtcNow;
+            UdpReceiveResult? result = await ReceivePacketOrTimeoutAsync(udp, remaining);
+            if (!result.HasValue)
+            {
+                return false;
+            }
+
+            UdpReceiveResult receive = result.Value;
             SrtpPacket? packet = SrtpPacket.Parse(receive.Buffer);
             if (packet == null || !packet.IsValidChecksum())
             {
@@ -193,17 +215,19 @@ public sealed class StopAndWaitSender : ITransferMode
 
             if (packet.Fin && packet.AckFlag && !packet.Nack)
             {
-                return;
+                return true;
             }
         }
+
+        return false;
     }
 
-    private static async Task<UdpReceiveResult?> ReceivePacketOrTimeoutAsync(UdpClient udp)
+    private static async Task<UdpReceiveResult?> ReceivePacketOrTimeoutAsync(UdpClient udp, TimeSpan timeout)
     {
         CancellationTokenSource timeoutCts = new CancellationTokenSource();
         try
         {
-            timeoutCts.CancelAfter(Timeout);
+            timeoutCts.CancelAfter(timeout);
 
             try
             {
