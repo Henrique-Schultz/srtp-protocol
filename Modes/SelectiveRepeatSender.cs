@@ -205,20 +205,20 @@ public sealed class SelectiveRepeatSender : ITransferMode
     private static async Task CloseAsync(UdpClient udp, SenderStats stats)
     {
         byte[] fin = PacketFactory.CreateFin().ToBytes();
-        bool retransmitting = false;
+        bool firstSend = true;
 
         while (true)
         {
             await udp.SendAsync(fin);
-            if (retransmitting)
+            if (!firstSend)
             {
                 stats.Retransmissions++;
             }
+            firstSend = false;
 
             UdpReceiveResult? result = await ReceivePacketOrTimeoutAsync(udp);
             if (!result.HasValue)
             {
-                retransmitting = true;
                 continue;
             }
 
