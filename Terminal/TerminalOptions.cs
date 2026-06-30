@@ -64,6 +64,16 @@ public sealed class TerminalOptions
             }
         }
 
+        if (port is < 1 or > 65534)
+        {
+            throw new ArgumentException("A porta deve estar entre 1 e 65534.");
+        }
+
+        if (window is < 1 or > 255)
+        {
+            throw new ArgumentException("A janela deve estar entre 1 e 255.");
+        }
+
         if (listen)
         {
             return new TerminalOptions
@@ -77,12 +87,18 @@ public sealed class TerminalOptions
         }
         else
         {
+            string finalFilePath = filePath ?? "entrada.bin";
+            if (!File.Exists(finalFilePath))
+            {
+                throw new FileNotFoundException("Arquivo de entrada nao encontrado.", finalFilePath);
+            }
+
             return new TerminalOptions
             {
                 Listen = false,
                 Host = host ?? "127.0.0.1",
                 Port = port,
-                FilePath = filePath ?? "entrada.bin",
+                FilePath = finalFilePath,
                 Window = (byte)window,
                 Mode = protocolMode
             };
