@@ -4,6 +4,10 @@ namespace Srtp.Protocol;
 
 public sealed class SrtpPacket
 {
+    // Cabecalho fixo do SRTP: 9 bytes no total.
+    // Bytes 0-3: flags SYN/FIN/ACK/NACK + SEQ de 14 bits + ACK de 14 bits.
+    // Byte 4: Length, usado como tamanho do payload nos dados e como janela proposta no SYN/SYN+ACK.
+    // Bytes 5-8: CRC32, usado para detectar corrupcao no cabecalho ou no payload.
     public const int HeaderLength = 9;
     public const int MaxPayloadLength = 255;
 
@@ -20,6 +24,9 @@ public sealed class SrtpPacket
     public byte[] ToBytes()
     {
         byte[] bytes = new byte[HeaderLength + Payload.Length];
+
+        // O CRC e calculado com o campo de CRC zerado; depois o valor real e gravado no cabecalho.
+        // Isso evita o problema circular de o CRC precisar incluir o proprio valor do CRC.
         WriteHeader(bytes, crc32: 0);
         Payload.CopyTo(bytes.AsSpan(HeaderLength));
 
@@ -45,6 +52,8 @@ public sealed class SrtpPacket
         bool isControlPacket = syn || fin || ackFlag;
         int payloadLength = isControlPacket ? 0 : length;
 
+        // Pacotes de controle usam apenas o cabecalho. No SYN/SYN+ACK, o campo Length
+        // nao representa payload: ele carrega a janela proposta para negociacao entre os lados.
         if (isControlPacket && datagram.Length != HeaderLength)
         {
             return null;
@@ -71,6 +80,7 @@ public sealed class SrtpPacket
 
     public bool IsValidChecksum()
     {
+        // Reconstroi o datagrama com CRC zerado para comparar com o CRC recebido.
         byte[] bytes = new byte[HeaderLength + Payload.Length];
         WriteHeader(bytes, crc32: 0);
         Payload.CopyTo(bytes.AsSpan(HeaderLength));
@@ -79,6 +89,8 @@ public sealed class SrtpPacket
 
     private void WriteHeader(Span<byte> destination, uint crc32)
     {
+        // Layout dos primeiros 32 bits:
+        // bit 31 SYN, bit 30 FIN, bits 29-16 SEQ(14), bit 15 ACK, bit 14 NACK, bits 13-0 ACK(14).
         uint first =
             (Syn ? 1u : 0u) << 31 |
             (Fin ? 1u : 0u) << 30 |

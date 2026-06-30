@@ -7,6 +7,12 @@ namespace Srtp.Modes;
 
 public sealed class SelectiveRepeatReceiver : ITransferMode
 {
+    // Receiver do Selective Repeat:
+    // - Aceita pacotes fora de ordem, desde que estejam dentro da janela.
+    // - Guarda esses pacotes em buffer.
+    // - Envia ACK individual para cada pacote valido recebido.
+    // - So entrega ao arquivo quando consegue formar uma sequencia continua a partir do expectedSeq.
+    // - Esse buffer e o motivo de o SR lidar bem com reordenacao.
     public string Name => "sr";
 
     public async Task ReceiveFileAsync(int port, string outputPath, byte proposedWindow)
@@ -30,6 +36,7 @@ public sealed class SelectiveRepeatReceiver : ITransferMode
 
             ushort expectedSeq = 0;
             bool eofReceived = false;
+            // Buffer guarda pacotes validos que chegaram adiantados, dentro da janela SR.
             Dictionary<ushort, SrtpPacket> buffer = new Dictionary<ushort, SrtpPacket>();
 
             FileStream output = File.Create(outputPath);
@@ -52,6 +59,8 @@ public sealed class SelectiveRepeatReceiver : ITransferMode
 
                     if (!packet.IsValidChecksum())
                     {
+                        // Com CRC invalido, nao da para confiar nos dados recebidos.
+                        // O receiver pede o proximo SEQ que ainda falta para manter a entrega em ordem.
                         stats.InvalidCrcPackets++;
                         await SendAsync(udp, PacketFactory.CreateNack(expectedSeq), sender);
                         continue;
@@ -82,6 +91,7 @@ public sealed class SelectiveRepeatReceiver : ITransferMode
 
                     if (!IsInsideWindow(packet.Seq, expectedSeq, proposedWindow))
                     {
+                        // Fora da janela atual: confirma para evitar retransmissoes infinitas, mas nao entrega.
                         stats.OutOfOrderPackets++;
                         await SendAsync(udp, PacketFactory.CreateAck(packet.Seq), sender);
                         continue;
@@ -89,16 +99,19 @@ public sealed class SelectiveRepeatReceiver : ITransferMode
 
                     if (buffer.ContainsKey(packet.Seq))
                     {
+                        // Duplicata: ja temos esse SEQ no buffer, entao apenas contabiliza e confirma de novo.
                         stats.DuplicatePackets++;
                     }
                     else
                     {
+                        // Pacote valido e dentro da janela: guarda mesmo que ainda nao seja o esperado.
                         buffer.Add(packet.Seq, packet);
                         stats.AcceptedPackets++;
                     }
 
                     await SendAsync(udp, PacketFactory.CreateAck(packet.Seq), sender);
 
+                    // Entrega ao arquivo tudo que ficou continuo a partir do SEQ esperado.
                     while (buffer.ContainsKey(expectedSeq))
                     {
                         SrtpPacket nextPacket = buffer[expectedSeq];
@@ -116,6 +129,7 @@ public sealed class SelectiveRepeatReceiver : ITransferMode
 
                     if (buffer.Count > 0)
                     {
+                        // Se ainda ha buraco na sequencia, avisa qual e o proximo pacote faltante.
                         await SendAsync(udp, PacketFactory.CreateNack(expectedSeq), sender);
                     }
                 }
@@ -136,6 +150,7 @@ public sealed class SelectiveRepeatReceiver : ITransferMode
 
     private static bool IsInsideWindow(ushort seq, ushort expectedSeq, byte window)
     {
+        // Distancia modular lida com wrap-around do espaco de sequencia de 14 bits.
         int sequenceSpace = SequenceNumber.MaxValue + 1;
         int distance = (seq - expectedSeq + sequenceSpace) % sequenceSpace;
         return distance < window;

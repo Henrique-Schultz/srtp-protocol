@@ -7,6 +7,11 @@ namespace Srtp.Modes;
 
 public sealed class StopAndWaitReceiver : ITransferMode
 {
+    // Receiver do Stop-and-Wait:
+    // - Mantem apenas o proximo SEQ esperado.
+    // - Aceita e grava somente esse pacote.
+    // - Responde com ACK do mesmo SEQ recebido.
+    // - Duplicatas recebem ACK novamente, mas nao sao gravadas outra vez.
     public string Name => "saw";
 
     public async Task ReceiveFileAsync(int port, string outputPath, byte proposedWindow)
@@ -32,6 +37,7 @@ public sealed class StopAndWaitReceiver : ITransferMode
             ushort? lastAcceptedSeq = null;
             bool eofReceived = false;
 
+            // O receiver so entrega dados ao arquivo quando o SEQ recebido e exatamente o esperado.
             FileStream output = File.Create(outputPath);
             try
             {
@@ -52,6 +58,8 @@ public sealed class StopAndWaitReceiver : ITransferMode
 
                     if (!packet.IsValidChecksum())
                     {
+                        // No Stop-and-Wait, pacote corrompido e descartado em silencio.
+                        // O sender recupera por timeout e retransmite o mesmo SEQ.
                         stats.InvalidCrcPackets++;
                         continue;
                     }
@@ -81,6 +89,7 @@ public sealed class StopAndWaitReceiver : ITransferMode
 
                     if (packet.Seq == expectedSeq)
                     {
+                        // Pacote correto: grava, confirma e passa a esperar o proximo numero de sequencia.
                         await output.WriteAsync(packet.Payload);
                         await SendAsync(udp, PacketFactory.CreateAck(packet.Seq), sender);
 
@@ -91,6 +100,7 @@ public sealed class StopAndWaitReceiver : ITransferMode
 
                         if (packet.Length < SrtpPacket.MaxPayloadLength)
                         {
+                            // Payload menor que 255 bytes indica o ultimo bloco do arquivo.
                             eofReceived = true;
                         }
 
@@ -99,6 +109,7 @@ public sealed class StopAndWaitReceiver : ITransferMode
 
                     if (lastAcceptedSeq.HasValue && packet.Seq == lastAcceptedSeq.Value)
                     {
+                        // ACK perdido no caminho: o sender retransmite, entao reenviamos o ACK sem duplicar dados.
                         stats.DuplicatePackets++;
                         await SendAsync(udp, PacketFactory.CreateAck(packet.Seq), sender);
                         continue;
@@ -126,6 +137,7 @@ public sealed class StopAndWaitReceiver : ITransferMode
         IPEndPoint? sender = null;
         SrtpPacket synAck = PacketFactory.CreateSynAck(proposedWindow);
 
+        // Primeiro recebe SYN e fixa o endpoint do sender aceito para esta sessao.
         while (true)
         {
             UdpReceiveResult receive = await udp.ReceiveAsync();
@@ -144,6 +156,7 @@ public sealed class StopAndWaitReceiver : ITransferMode
             }
         }
 
+        // Depois aguarda o ACK final; se o SYN+ACK se perdeu, outro SYN faz o receiver reenviar.
         while (true)
         {
             UdpReceiveResult receive = await udp.ReceiveAsync();

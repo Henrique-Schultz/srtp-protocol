@@ -7,12 +7,18 @@ namespace Srtp.Modes;
 
 public sealed class StopAndWaitSender : ITransferMode
 {
+    // Stop-and-Wait:
+    // - Envia exatamente um pacote de dados por vez.
+    // - Depois de enviar, fica bloqueado esperando ACK com o mesmo SEQ do pacote.
+    // - Se o ACK nao chega em 100 ms, retransmite o mesmo pacote.
+    // - Por isso, sofre muito com latencia: a cada pacote existe um periodo ocioso esperando o ACK voltar.
     private static readonly TimeSpan Timeout = TimeSpan.FromMilliseconds(100);
 
     public string Name => "saw";
 
     public async Task SendFileAsync(string host, int port, string filePath, byte proposedWindow)
     {
+        // O sender usa a porta base + 1 para facilitar os testes locais com receiver e sender na mesma maquina.
         IPAddress[] receiverAddresses = await Dns.GetHostAddressesAsync(host);
         IPAddress receiverAddress = receiverAddresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork)
             ?? receiverAddresses.FirstOrDefault()
@@ -39,6 +45,8 @@ public sealed class StopAndWaitSender : ITransferMode
 
                 while (true)
                 {
+                    // Stop-and-Wait so avanca para o proximo pacote depois do ACK do pacote atual.
+                    // Nao existe janela de pacotes em voo: a janela efetiva e sempre 1.
                     int read = await stream.ReadAsync(buffer);
                     bool isEnd = read < SrtpPacket.MaxPayloadLength;
 
@@ -67,6 +75,7 @@ public sealed class StopAndWaitSender : ITransferMode
 
                     if (stream.Position == stream.Length)
                     {
+                        // Se o arquivo termina exatamente no limite de 255 bytes, envia um pacote vazio como EOF.
                         sentFinalZeroLength = true;
                         SrtpPacket finalPacket = new SrtpPacket
                         {
@@ -100,6 +109,8 @@ public sealed class StopAndWaitSender : ITransferMode
     {
         byte[] syn = PacketFactory.CreateSyn(proposedWindow).ToBytes();
 
+        // Three-way handshake: SYN, SYN+ACK e ACK final.
+        // Mesmo que uma janela maior seja negociada, o Stop-and-Wait usa apenas 1 pacote em voo.
         while (true)
         {
             await udp.SendAsync(syn);
@@ -132,6 +143,8 @@ public sealed class StopAndWaitSender : ITransferMode
     {
         byte[] bytes = packet.ToBytes();
 
+        // Sem ACK dentro do timeout fixo de 100 ms, o mesmo pacote e retransmitido.
+        // O ACK esperado precisa carregar o mesmo SEQ enviado no pacote de dados.
         while (true)
         {
             await udp.SendAsync(bytes);
@@ -150,6 +163,7 @@ public sealed class StopAndWaitSender : ITransferMode
     {
         byte[] fin = PacketFactory.CreateFin().ToBytes();
 
+        // O FIN tambem e confiavel: repete ate receber FIN+ACK.
         while (true)
         {
             await udp.SendAsync(fin);
@@ -186,6 +200,7 @@ public sealed class StopAndWaitSender : ITransferMode
 
             if (ack.AckFlag && !ack.Nack && !ack.Syn && !ack.Fin && ack.Ack == expectedSeq)
             {
+                // ACK do mesmo SEQ confirma que aquele pacote especifico chegou corretamente.
                 return true;
             }
         }

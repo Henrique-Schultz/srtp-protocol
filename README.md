@@ -4,10 +4,10 @@ Implementacao do trabalho de Laboratorio de Redes: um protocolo de transporte co
 
 ## Requisitos
 
-- .NET 8 ou superior
+- .NET 9 ou superior
 - Windows, Linux ou macOS com suporte ao SDK do .NET
 
-O projeto usa `net8.0` e foi validado com SDK .NET 9, que compila projetos .NET 8.
+O projeto usa `net9.0` e foi validado com SDK .NET 9.
 
 ## Como compilar
 

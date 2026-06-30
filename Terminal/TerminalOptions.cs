@@ -14,9 +14,11 @@ public sealed class TerminalOptions
     {
         if (args == null || args.Length == 0)
         {
+            // Sem argumentos, entra no modo guiado por perguntas no terminal.
             return Read();
         }
 
+        // Com argumentos, permite automatizar testes sem precisar digitar no console.
         bool listen = false;
         string? host = null;
         int port = 5000;

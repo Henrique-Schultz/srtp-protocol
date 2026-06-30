@@ -6,6 +6,9 @@ public sealed class SenderStats
 {
     private readonly Stopwatch _stopwatch = new();
 
+    // Metricas usadas no relatorio para comparar os algoritmos.
+    // SAW tende a perder throughput com latencia; GBN tende a acumular retransmissoes com perda/reordenacao;
+    // SR normalmente preserva melhor o throughput porque retransmite pontualmente.
     public long ApplicationBytes { get; set; }
     public int OriginalDataPackets { get; set; }
     public int Retransmissions { get; set; }
@@ -33,6 +36,8 @@ public sealed class ReceiverStats
 {
     private readonly Stopwatch _stopwatch = new();
 
+    // No receiver, esses contadores mostram como a rede afetou a entrega:
+    // CRC invalido indica corrupcao, fora de ordem aparece muito em GBN, e duplicatas surgem apos retransmissoes.
     public long ApplicationBytes { get; set; }
     public int AcceptedPackets { get; set; }
     public int InvalidCrcPackets { get; set; }

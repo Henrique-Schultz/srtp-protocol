@@ -7,6 +7,12 @@ namespace Srtp.Modes;
 
 public sealed class GoBackNSender : ITransferMode
 {
+    // Go-Back-N:
+    // - Usa janela deslizante para manter varios pacotes em voo.
+    // - ACK e cumulativo: ao receber ACK de SEQ X, o sender considera confirmados todos os pacotes ate X.
+    // - NACK aponta o proximo SEQ esperado pelo receiver.
+    // - Em timeout ou NACK, retransmite a janela a partir da falha, inclusive pacotes que talvez ja tenham chegado.
+    // - Por isso tem bom ganho com latencia, mas sofre muito com perda e reordenacao.
     private static readonly TimeSpan Timeout = TimeSpan.FromMilliseconds(100);
 
     public string Name => "gbn";
@@ -45,6 +51,7 @@ public sealed class GoBackNSender : ITransferMode
 
     private static async Task<List<SrtpPacket>> ReadPacketsAsync(string filePath, SenderStats stats)
     {
+        // GBN monta a lista completa para conseguir voltar e retransmitir uma janela anterior.
         List<SrtpPacket> packets = new List<SrtpPacket>();
         ushort seq = 0;
         byte[] buffer = new byte[SrtpPacket.MaxPayloadLength];
@@ -84,11 +91,13 @@ public sealed class GoBackNSender : ITransferMode
 
     private static async Task SendPacketsAsync(UdpClient udp, List<SrtpPacket> packets, byte window, SenderStats stats)
     {
+        // baseIndex aponta para o primeiro pacote ainda nao confirmado; nextIndex para o proximo envio novo.
         int baseIndex = 0;
         int nextIndex = 0;
 
         while (baseIndex < packets.Count)
         {
+            // Preenche a janela: envia pacotes novos enquanto houver espaco entre baseIndex e baseIndex + window.
             while (nextIndex < packets.Count && nextIndex < baseIndex + window)
             {
                 await SendPacketAsync(udp, packets[nextIndex]);
@@ -98,6 +107,8 @@ public sealed class GoBackNSender : ITransferMode
             UdpReceiveResult? result = await ReceivePacketOrTimeoutAsync(udp);
             if (!result.HasValue)
             {
+                // No timeout do GBN, toda a janela em voo e reenviada.
+                // Essa e a principal causa da explosao de retransmissoes em perdas/reordenacao.
                 await ResendWindowAsync(udp, packets, baseIndex, nextIndex, stats);
                 continue;
             }
@@ -111,6 +122,8 @@ public sealed class GoBackNSender : ITransferMode
 
             if (response.Nack)
             {
+                // NACK indica o primeiro pacote que o receiver ainda espera.
+                // O sender move a base para esse pacote e reenvia tudo dali ate o fim da janela atual.
                 int nackIndex = FindPacketIndex(packets, baseIndex, response.Ack);
                 if (nackIndex >= 0)
                 {
@@ -123,6 +136,8 @@ public sealed class GoBackNSender : ITransferMode
             int ackIndex = FindPacketIndex(packets, baseIndex, response.Ack);
             if (ackIndex >= 0)
             {
+                // ACK cumulativo: tudo ate esse indice pode sair da janela.
+                // Exemplo: ACK 10 confirma que 0..10 chegaram em ordem.
                 baseIndex = ackIndex + 1;
             }
         }
@@ -160,6 +175,7 @@ public sealed class GoBackNSender : ITransferMode
     {
         byte[] syn = PacketFactory.CreateSyn(proposedWindow).ToBytes();
 
+        // A janela efetiva e o menor valor anunciado pelos dois lados.
         while (true)
         {
             await udp.SendAsync(syn);

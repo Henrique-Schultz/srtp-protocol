@@ -7,6 +7,12 @@ namespace Srtp.Modes;
 
 public sealed class SelectiveRepeatSender : ITransferMode
 {
+    // Selective Repeat:
+    // - Tambem usa janela deslizante, mas cada pacote e confirmado individualmente.
+    // - ACK de um SEQ confirma apenas aquele pacote, nao todos os anteriores.
+    // - NACK aponta um pacote faltante especifico.
+    // - Timeout retransmite apenas o pacote individual vencido.
+    // - Por isso lida melhor com perda e reordenacao que o Go-Back-N.
     private static readonly TimeSpan Timeout = TimeSpan.FromMilliseconds(100);
 
     public string Name => "sr";
@@ -45,6 +51,7 @@ public sealed class SelectiveRepeatSender : ITransferMode
 
     private static async Task<List<SrtpPacket>> ReadPacketsAsync(string filePath, SenderStats stats)
     {
+        // SR tambem guarda os pacotes para retransmitir apenas os que faltarem.
         List<SrtpPacket> packets = new List<SrtpPacket>();
         ushort seq = 0;
         byte[] buffer = new byte[SrtpPacket.MaxPayloadLength];
@@ -84,6 +91,7 @@ public sealed class SelectiveRepeatSender : ITransferMode
 
     private static async Task SendPacketsAsync(UdpClient udp, List<SrtpPacket> packets, byte window, SenderStats stats)
     {
+        // Cada pacote tem estado proprio: enviado, confirmado e horario do ultimo envio.
         bool[] acked = new bool[packets.Count];
         bool[] sent = new bool[packets.Count];
         DateTime[] sentAt = new DateTime[packets.Count];
@@ -93,6 +101,7 @@ public sealed class SelectiveRepeatSender : ITransferMode
 
         while (ackedCount < packets.Count)
         {
+            // Envia novos pacotes ate encher a janela permitida.
             while (nextIndex < packets.Count && nextIndex < baseIndex + window)
             {
                 await SendPacketAsync(udp, packets[nextIndex]);
@@ -104,6 +113,7 @@ public sealed class SelectiveRepeatSender : ITransferMode
             DateTime now = DateTime.UtcNow;
             for (int index = baseIndex; index < nextIndex; index++)
             {
+                // Diferente do GBN, timeout retransmite apenas o pacote individual vencido.
                 if (!acked[index] && sent[index] && now - sentAt[index] >= Timeout)
                 {
                     await SendPacketAsync(udp, packets[index]);
@@ -127,6 +137,7 @@ public sealed class SelectiveRepeatSender : ITransferMode
 
             if (response.Nack)
             {
+                // NACK em SR aciona retransmissao pontual do pacote ausente.
                 int nackIndex = FindPacketIndex(packets, baseIndex, nextIndex, response.Ack);
                 if (nackIndex >= 0 && !acked[nackIndex])
                 {
@@ -141,11 +152,14 @@ public sealed class SelectiveRepeatSender : ITransferMode
             int ackIndex = FindPacketIndex(packets, baseIndex, nextIndex, response.Ack);
             if (ackIndex >= 0 && !acked[ackIndex])
             {
+                // ACK individual: marca so aquele pacote como confirmado.
+                // Pacotes posteriores podem ser confirmados antes dos anteriores.
                 acked[ackIndex] = true;
                 ackedCount++;
 
                 while (baseIndex < packets.Count && acked[baseIndex])
                 {
+                    // A base da janela avanca apenas quando o inicio da janela ja foi confirmado.
                     baseIndex++;
                 }
             }

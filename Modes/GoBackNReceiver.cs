@@ -7,6 +7,11 @@ namespace Srtp.Modes;
 
 public sealed class GoBackNReceiver : ITransferMode
 {
+    // Receiver do Go-Back-N:
+    // - Nao usa buffer para pacotes fora de ordem.
+    // - So aceita o pacote com SEQ exatamente igual ao expectedSeq.
+    // - Qualquer pacote adiantado e descartado e gera NACK do proximo esperado.
+    // - Essa simplicidade explica por que GBN sofre quando a rede reordena pacotes.
     public string Name => "gbn";
 
     public async Task ReceiveFileAsync(int port, string outputPath, byte proposedWindow)
@@ -32,6 +37,7 @@ public sealed class GoBackNReceiver : ITransferMode
             ushort? lastAcceptedSeq = null;
             bool eofReceived = false;
 
+            // No GBN, o receiver nao guarda fora de ordem: aceita apenas o SEQ esperado.
             FileStream output = File.Create(outputPath);
             try
             {
@@ -52,6 +58,8 @@ public sealed class GoBackNReceiver : ITransferMode
 
                     if (!packet.IsValidChecksum())
                     {
+                        // Com CRC invalido, pede retransmissao a partir do pacote esperado.
+                        // Em GBN/SR, o NACK do esperado ajuda o sender a recuperar mais rapido que esperar so timeout.
                         stats.InvalidCrcPackets++;
                         await SendAsync(udp, PacketFactory.CreateNack(expectedSeq), sender);
                         continue;
@@ -83,6 +91,7 @@ public sealed class GoBackNReceiver : ITransferMode
 
                     if (packet.Seq == expectedSeq)
                     {
+                        // Pacote em ordem: grava e envia ACK cumulativo daquele SEQ.
                         await output.WriteAsync(packet.Payload);
                         await SendAsync(udp, PacketFactory.CreateAck(packet.Seq), sender);
 
@@ -101,11 +110,14 @@ public sealed class GoBackNReceiver : ITransferMode
 
                     if (lastAcceptedSeq.HasValue && packet.Seq == lastAcceptedSeq.Value)
                     {
+                        // Duplicata comum quando o ACK anterior se perdeu.
                         stats.DuplicatePackets++;
                         await SendAsync(udp, PacketFactory.CreateAck(packet.Seq), sender);
                         continue;
                     }
 
+                    // Qualquer outro SEQ e fora de ordem; o GBN descarta e pede o esperado.
+                    // Mesmo se o pacote estiver correto, ele nao pode ser entregue sem os anteriores.
                     stats.OutOfOrderPackets++;
                     await SendAsync(udp, PacketFactory.CreateNack(expectedSeq), sender);
                 }

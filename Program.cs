@@ -3,6 +3,8 @@ using Srtp.Terminal;
 
 TerminalOptions options = TerminalOptions.Read(args);
 
+// Ponto de entrada: escolhe entre receiver e sender e depois seleciona o algoritmo confiavel.
+// Os tres modos compartilham o mesmo formato de pacote SRTP, mas mudam a politica de ACK, janela e retransmissao.
 if (options.Listen)
 {
     if (options.Mode == "sr")
